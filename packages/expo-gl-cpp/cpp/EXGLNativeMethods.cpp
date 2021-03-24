@@ -1566,10 +1566,50 @@ NATIVE_METHOD(bindVertexArray) {
 // ----------
 
 NATIVE_METHOD(getSupportedExtensions) {
-  return jsi::Array(runtime, 0);
+  std::vector<const GLubyte *> extensionNames;
+  GLint numExtensions = 0;
+
+  addBlockingToNextBatch([&] {
+    glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
+    extensionNames.reserve(numExtensions);
+    for (auto i = 0; i < numExtensions; i++) {
+      auto glStr = glGetStringi(GL_EXTENSIONS, i);
+      extensionNames.push_back(glStr);
+    }
+  });
+
+  jsi::Array extensions(runtime, numExtensions);
+
+  for (auto i = 0; i < numExtensions; i++) {
+    std::string extensionName(reinterpret_cast<const char *>(extensionNames[i]));
+
+    // OpenGL ES prefixes extension names with `GL_`, we need to trim this.
+    if (extensionName.substr(0, 3) == "GL_") {
+      extensionName.erase(0, 3);
+    }
+    extensions.setValueAtIndex(runtime, i, jsi::String::createFromUtf8(runtime, extensionName));
+  }
+  return extensions;
 }
 
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
+
 NATIVE_METHOD(getExtension) {
+  auto name = ARG(0, std::string);
+
+  // Here we should also check if the extension with given name is really available (use `getSupportedExtensions` results as there is no `getExtension` equivalent in OpenGL ES).
+  // For now I'm just assuming that below extensions are available on all devices.
+
+  if (name == "EXT_texture_filter_anisotropic") {
+    jsi::Object result(runtime);
+    result.setProperty(runtime, "TEXTURE_MAX_ANISOTROPY_EXT", jsi::Value(GL_TEXTURE_MAX_ANISOTROPY_EXT));
+    result.setProperty(runtime, "MAX_TEXTURE_MAX_ANISOTROPY_EXT", jsi::Value(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT));
+    return result;
+  }
+  if (name == "OES_texture_float_linear") {
+    return jsi::Object(runtime);
+  }
   return nullptr;
 }
 
